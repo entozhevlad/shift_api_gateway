@@ -2,14 +2,14 @@ version: '3'
 
 services:
   app:
-    container_name: 'shift-python-2024'
+    container_name: 'shift-api-gateway'
     build:
       context: app/
       dockerfile: Dockerfile
     volumes:
       - ..:/workspace:cached
     ports:
-      - '28080:8080'
+      - '28084:8083'
     command: sleep infinity
     cap_add:
       - SYS_PTRACE
@@ -17,3 +17,9 @@ services:
       - seccomp:unconfined
     environment:
       - PYTHONPATH=/workspace/src
+    networks:
+      - shift-network
+
+networks:
+  shift-network:
+    external: true
