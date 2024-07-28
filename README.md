@@ -1,60 +1,44 @@
-# Base Devcontainers
+# API-Gateway
 
-Репозиторий с рабочим окружением, необходимым для работы над ШИФТ 2024.
+Сервис API-Gateway
 
-От приложения ожидается использование [8080 порта](./.devcontainer/docker-compose.yml#L12) внутри контейнера.
-На локальном хосте приложение будет доступно на [28080 порту](./.devcontainer/docker-compose.yml#L12).
+## Установка
 
-## Внесение изменений внутри Devcontainer
+1. Клонируйте репозиторий:
+    ```sh
+    git clone <repository_url>
+    cd <repository_directory>
+    ```
 
-Перед использованием devcontainer-ов необходимо установить:
-- Для Windows: рекомендуется использовать [WSL](https://virgo.ftc.ru/pages/viewpage.action?pageId=1084887269)
-- Docker Desktop для MacOS/Windows или просто docker для Linux
-- Visual Studio Code c плагинами
-  - `ms-vscode-remote.remote-containers`
-  - `ms-azuretools.vscode-docker`
-- Git
-- OpenSSH с SSH Agent
-- OpenSSL
-- [Шрифты для powerlevel10k](https://github.com/romkatv/powerlevel10k?tab=readme-ov-file#fonts)
+2. Откройте проект в VS Code с Dev Containers:
+    - Установите [Remote - Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) расширение для VS Code.
+    - Откройте командную палитру (Ctrl+Shift+P) и выберите "Remote-Containers: Open Folder in Container...".
 
-Если какие-то из дальнейших пунктов у вас уже выполнены, смело пропускайте шаг.
+3. Poetry автоматически установит все зависимости после создания контейнера.
 
-После установки необходимого ПО:
-- Сгенерируйте SSH ключ и добавьте его в свой MosHub аккаунт
-- Настройте `user.name` и `user.email` для Git
-- [Настройте SSH Agent c вашим ключом](https://code.visualstudio.com/remote/advancedcontainers/sharing-git-credentials)
-- Склонируйте текущий репозиторий в локальную директорию, если еще не сделали этого
+## Использование
 
-Для настройки kubernetes (потребуется во второй половине курса):
-- Сгенерируйте ключи для kubectl и положите их в папку `~/.kube`
-- Настройте kubectl на использование ключей из папки `~/.kube`
-
-После настройки локального окружения:
-- Откройте директорию в Visual Studio Code
-- Нажмите `Ctrl+Shift+P` или `Cmd+Shift+P`
-- Введите `Dev Containers:`
-- Выберите из предложенных вариантов пункт `Dev Containers: Rebuild and Reopen in Container`
-- Дождитесь открытия проекта внутри окружения в Devcontainer
+Запустите главный файл проекта:
+```sh
+uvicorn src.app.main:app --host 0.0.0.0 --port 8000 --reload
 
 
-### Окружение доступное после старта Devcontainer
-- Преднастроенная конфигурация для запуска линтера
 
-  Доступ из командной панели:
-  - Нажмите `Ctrl+Shift+P` или `Cmd+Shift+P`
-  - Выберете `Tasks: Run Task`
-  - Выберете `Flake8` или `ISort`
 
-- Преднастроенная конфигурация для запуска тестов
+## Code Linting
 
-  Смотрите по кнопке `Testing` в левой панели Visual Studio Code.
+Проект использует `wemake-python-styleguide` в качестве линтера. Чтобы запустить линтер, следуйте следующим шагам:
 
-- Преднастроенная конфигурация для запуска сервиса
+1. Установить зависимости проекта:
 
-  Смотрите по кнопке `Run and Debug` в левой панели Visual Studio Code.
-- `Zsh` с Oh-My-Zsh в качестве shell по-умолчанию
-- базовые консольные инструменты вроде `git`, `curl` и прочие
-- `kubectl` и `helm` для работы с kubernetes
-- `python` версии 3.12 с `poetry` для управления зависимостями и виртуальным окружением
-- настроен доступ до `docker` на хосте
+    ```bash
+    poetry install
+    ```
+
+2. Зарустите линтер для папки app:
+
+    ```bash
+    poetry run flake8 --jobs=1 src/app
+    ```
+
+Можно редактировать конфигурационный файл линтера `.flake8` в корне проекта.

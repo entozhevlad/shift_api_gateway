@@ -1,0 +1,38 @@
+stages:
+  - lint
+  - test
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+
+before_script:
+  - apt-get update
+  - pip install poetry
+
+lint:
+  stage: lint
+  image: python:3.12
+  script:
+    - poetry install
+    - poetry run isort src/app
+    - poetry run flake8 --jobs=1 src/app
+  allow_failure: true
+  cache:
+    paths:
+      - .venv/
+      - poetry.lock
+      - pyproject.toml
+      - .cache/pip
+
+test:
+  stage: test
+  image: python:3.12
+  script:
+    - poetry install
+    - poetry run pytest
+  cache:
+    paths:
+      - .venv/
+      - poetry.lock
+      - pyproject.toml
+      - .cache/pip
