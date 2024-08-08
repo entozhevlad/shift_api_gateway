@@ -4,8 +4,8 @@ from pydantic import BaseModel
 
 app = FastAPI()
 
-AUTH_SERVICE_URL = "http://shift-python-2024-auth-service:82"
-TRANSACTION_SERVICE_URL = "http://shift-python-2024-transaction-service:83"
+AUTH_SERVICE_URL = "http://auth_service:82"
+TRANSACTION_SERVICE_URL = "http://transactions_service:83"
 
 
 class UserCredentials(BaseModel):

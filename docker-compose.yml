@@ -23,44 +23,43 @@ services:
 
   api_gateway:
     build:
-      context: ./api_gateway
       dockerfile: Dockerfile
     depends_on:
       - kafka
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
     ports:
-      - "8000:8000"
+      - "80:80"
 
   auth_service:
     build:
-      context: ./auth_service
+      context: ./src/app/external/auth_service
       dockerfile: Dockerfile
     depends_on:
       - kafka
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
     ports:
-      - "8001:8001"
+      - "82:82"
 
   transactions_service:
     build:
-      context: ./transactions_service
+      context: ./src/app/external/transactions_service
       dockerfile: Dockerfile
     depends_on:
       - kafka
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
     ports:
-      - "8002:8002"
+      - "83:83"
 
-  faceverification_service:
+  face_verification_service:
     build:
-      context: ./faceverification_service
+      context: ./src/app/external/face_verification_service
       dockerfile: Dockerfile
     depends_on:
       - kafka
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
     ports:
-      - "8003:8003"
+      - "84:84"

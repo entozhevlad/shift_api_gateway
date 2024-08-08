@@ -1,58 +1,25 @@
-version: '3.8'
+version: '3'
 
 services:
-  zookeeper:
-    image: confluentinc/cp-zookeeper:latest
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
+  app:
+    container_name: 'shift-api-gateway'
+    build:
+      context: app/
+      dockerfile: Dockerfile
+    volumes:
+      - ..:/workspace:cached
     ports:
-      - "2181:2181"
+      - '28084:8083'
+    command: sleep infinity
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      - PYTHONPATH=/workspace/src
+    networks:
+      - shift-network
 
-  kafka:
-    image: confluentinc/cp-kafka:latest
-    depends_on:
-      - zookeeper
-    environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-    ports:
-      - "9092:9092"
-
-  api_gateway:
-    image: app:4
-    depends_on:
-      - kafka
-    environment:
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-    ports:
-      - "80:80"
-
-  auth_service:
-    image: app:3
-    depends_on:
-      - kafka
-    environment:
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-    ports:
-      - "82:82"
-
-  transactions_service:
-    image: app:2
-    depends_on:
-      - kafka
-    environment:
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-    ports:
-      - "83:83"
-
-  face_verification_service:
-    image: app:1
-    depends_on:
-      - kafka
-    environment:
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-    ports:
-      - "84:84"
+networks:
+  shift-network:
+    external: true
