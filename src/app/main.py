@@ -86,3 +86,32 @@ async def get_transactions_report(request: DateRangeRequest, current_user: str =
             return response.json()
         raise HTTPException(status_code=response.status_code,
                             detail=response.json().get("detail"))
+
+
+async def check_auth_service_health():
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(f"{AUTH_SERVICE_URL}/healthz/ready")
+            response.raise_for_status()  # Если статус не 200, возникнет исключение
+            return response.status_code == 200
+        except httpx.RequestError:
+            return False
+
+async def check_transaction_service_health():
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(f"{TRANSACTION_SERVICE_URL}/transaction/healthz/ready")
+            response.raise_for_status()  # Если статус не 200, возникнет исключение
+            return response.status_code == 200
+        except httpx.RequestError:
+            return False
+
+@app.get("/healthz/ready")
+async def health_check():
+    auth_healthy = await check_auth_service_health()
+    transaction_healthy = await check_transaction_service_health()
+
+    if not auth_healthy or not transaction_healthy:
+        raise HTTPException(status_code=503, detail="One or more dependencies are not available")
+
+    return {"status": "healthy"}
