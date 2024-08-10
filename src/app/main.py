@@ -1,12 +1,16 @@
 import httpx
 from fastapi import FastAPI, HTTPException, Depends, Header
 from pydantic import BaseModel
+from src.app.external.auth_service.src.app.services.auth_service import AuthService, oauth2_scheme
+from fastapi.security import OAuth2PasswordRequestForm  # <-- Добавьте этот импорт
+
 
 app = FastAPI()
 
 AUTH_SERVICE_URL = "http://auth_service:82"
 TRANSACTION_SERVICE_URL = "http://transactions_service:83"
 
+auth_service = AuthService()
 
 class UserCredentials(BaseModel):
     username: str
@@ -25,17 +29,14 @@ class DateRangeRequest(BaseModel):
     user_id: str
 
 
-async def get_current_user(authorization: str = Header(None)):
-    if not authorization:
-        raise HTTPException(
-            status_code=401, detail="Authorization header missing")
-    token = authorization.split(
-        " ")[1] if " " in authorization else authorization
+async def get_current_user(token: str = Depends(oauth2_scheme)):
     async with httpx.AsyncClient() as client:
-        response = await client.post(f"{AUTH_SERVICE_URL}/verify", json={"token": token})
-        if response.status_code == 200:
-            return response.json().get("user")
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
+        try:
+            response = await client.post(f"{AUTH_SERVICE_URL}/verify", headers={"Authorization": f"Bearer {token}"})
+            response.raise_for_status()
+            return response.json()["user"]
+        except httpx.HTTPStatusError as exc:
+            raise HTTPException(status_code=exc.response.status_code, detail=exc.response.json().get("detail", "Invalid token"))
 
 
 @app.post("/register")
@@ -49,19 +50,26 @@ async def register(user_credentials: UserCredentials):
 
 
 @app.post("/login")
-async def login(user_credentials: UserCredentials):
+async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     async with httpx.AsyncClient() as client:
-        response = await client.post(f"{AUTH_SERVICE_URL}/login", json=user_credentials.dict())
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        data = {
+            "grant_type": "password",
+            "username": form_data.username,
+            "password": form_data.password,
+        }
+        response = await client.post(f"{AUTH_SERVICE_URL}/login", data=data, headers=headers)
         if response.status_code == 200:
             return response.json()
         raise HTTPException(status_code=response.status_code,
                             detail=response.json().get("detail"))
 
+@app.post("/transactions/create_transaction/")
+async def create_transaction(request: TransactionCreateRequest, current_user: str = Depends(get_current_user)):
+    request.user_id = current_user
 
-@app.post("/transactions/")
-async def create_transaction(request: TransactionCreateRequest, token: str = Depends(get_current_user)):
     async with httpx.AsyncClient() as client:
-        response = await client.post(f"{TRANSACTION_SERVICE_URL}/transaction/transactions/", json=request.dict())
+        response = await client.post(f"{TRANSACTION_SERVICE_URL}/transactions/", json=request.dict())
         if response.status_code == 200:
             return response.json()
         raise HTTPException(status_code=response.status_code,
@@ -69,9 +77,11 @@ async def create_transaction(request: TransactionCreateRequest, token: str = Dep
 
 
 @app.post("/transactions/report/")
-async def get_transactions_report(request: DateRangeRequest, token: str = Depends(get_current_user)):
+async def get_transactions_report(request: DateRangeRequest, current_user: str = Depends(get_current_user)):
+    request.user_id = current_user
+
     async with httpx.AsyncClient() as client:
-        response = await client.post(f"{TRANSACTION_SERVICE_URL}/transaction/transactions/report/", json=request.dict())
+        response = await client.post(f"{TRANSACTION_SERVICE_URL}/transactions/report/", json=request.dict())
         if response.status_code == 200:
             return response.json()
         raise HTTPException(status_code=response.status_code,
