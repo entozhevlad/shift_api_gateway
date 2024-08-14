@@ -17,9 +17,3 @@ services:
       - seccomp:unconfined
     environment:
       - PYTHONPATH=/workspace/src
-    networks:
-      - shift-network
-
-networks:
-  shift-network:
-    external: true
