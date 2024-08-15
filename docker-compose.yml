@@ -26,6 +26,9 @@ services:
       dockerfile: Dockerfile
     depends_on:
       - kafka
+      - auth_service
+      - transactions_service
+      - face_verification_service
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
     ports:
@@ -39,6 +42,9 @@ services:
       - kafka
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - PHOTO_STORAGE_PATH=/app/photos
+    volumes:
+      - photos_volume:/app/photos
     ports:
       - "82:82"
 
@@ -61,5 +67,12 @@ services:
       - kafka
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - PHOTO_STORAGE_PATH=/app/photos
+    volumes:
+      - photos_volume:/app/photos
     ports:
       - "84:84"
+
+volumes:
+  photos_volume:
+    driver: local
