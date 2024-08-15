@@ -141,14 +141,3 @@ async def health_check():
         )
 
     return {'status': 'healthy'}
-
-@app.post('/api/verify')
-async def verify_user(token: str = Depends(oauth2_scheme_dependency)):
-    """Проксирует запрос верификации пользователя в Auth Service с проверкой токена."""
-    async with httpx.AsyncClient() as client:
-        response = await post_request(
-            client,
-            f'{AUTH_SERVICE_URL}/verify',
-            headers={"Authorization": f"Bearer {token}"}
-        )
-    return response

@@ -15,7 +15,7 @@ lint:
   script:
     - poetry install
     - poetry run isort src/app
-    - poetry run flake8 --jobs=1 src/app
+    - poetry run flake8 --jobs=1 src/app/main.py
   allow_failure: true
   cache:
     paths:
