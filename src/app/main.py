@@ -5,6 +5,7 @@ import httpx
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, Field
+
 from src.app.external.auth_service.src.app.services.auth_service import oauth2_scheme
 
 app = FastAPI()
@@ -147,16 +148,16 @@ async def health_check():
 @app.post('/api/verify')
 async def verify_user(token: str = Depends(oauth2_scheme)):
     """Верификация пользователя с проверкой JWT-токена."""
-    headers = {'Authorization': f'Bearer {token}'}
+    headers = {'Authorization': 'Bearer {0}'.format(token)}
     async with httpx.AsyncClient() as client:
         try:
             response = await client.post(
-                f"{AUTH_SERVICE_URL}/verify", headers=headers
+                '{0}/verify'.format(AUTH_SERVICE_URL), headers=headers,
             )
             response.raise_for_status()
             return response.json()
         except httpx.HTTPStatusError as exc:
             raise HTTPException(
                 status_code=exc.response.status_code,
-                detail=exc.response.json().get(DETAIL_KEY, 'Ошибка при верификации')
+                detail=exc.response.json().get(DETAIL_KEY, 'Ошибка при верификации'),
             )
