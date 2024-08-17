@@ -3,12 +3,12 @@ from typing import Optional
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Query
-from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 from pydantic import BaseModel, Field
 
-from src.app.external.auth_service.src.app.services.auth_service import oauth2_scheme
-
 app = FastAPI()
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl='/login')
 
 # URLs микросервисов
 AUTH_SERVICE_URL = 'http://auth_service:82'
