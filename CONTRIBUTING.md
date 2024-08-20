@@ -14,3 +14,27 @@
 - Открыть директорию с репозиторием через Visual Studio Code
 - Установить [рекомендуемые плагины](.vscode/extensions.json) Visual Studio Code
 - Ввести `Ctrl+Shift+P` или `Cmd+Shift+P` и выбрать `Dev Containers: Rebuild and Reopen in Container`
+
+### Миграции в базу данных
+Перед началом работы с миграциями, убедитесь, что все микросервисы подняты через docker-compose в сервисе API-Gateway
+
+Работа с миграциями организована за счёт инструмента alembic.
+
+После поднятия контейнеров есть два пути работы с миграциями.
+
+1. Зайти в консоль отдельного контейнера и выполнитель следующие команды
+
+Чтобы создать миграции выполните следующую команду
+
+- alembic revision --autogenerate -m "Init migration"
+
+Чтобы применить миграции выполните следующую команду
+
+- alembic upgrade head
+
+2. Выполните команды через командную строку введя следующие команды docker exec с параметрами
+
+- docker exec -it shift-api-gateway-transactions_service-1 alembic revision --autogenerate -m "Initial migration"
+- docker exec -it shift-api-gateway-transactions_service-1 alembic upgrade head
+- docker exec -it shift-api-gateway-auth_service-1 alembic revision --autogenerate -m "Initial migration"
+- docker exec -it shift-api-gateway-auth_service-1 alembic upgrade head
