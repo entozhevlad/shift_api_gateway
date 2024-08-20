@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Header, Query
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 from pydantic import BaseModel, Field
 
@@ -22,14 +22,12 @@ DETAIL_KEY = 'detail'
 
 class TransactionCreateRequest(BaseModel):
     """Модель для создания транзакции."""
-
     amount: float
     type: str = Field(..., pattern='(debit|credit)')
 
 
 class DateRangeRequest(BaseModel):
     """Модель для указания временного диапазона."""
-
     start: datetime = Field(..., description='Начало временного диапазона')
     end: datetime = Field(..., description='Конец временного диапазона')
 
@@ -47,16 +45,16 @@ async def post_request(client: httpx.AsyncClient, url: str, **kwargs):
 
 @app.post('/register')
 async def register(
-    username: str = Query(default=None),
-    password: str = Query(default=None),
-    first_name: Optional[str] = Query(default=None),
-    last_name: Optional[str] = Query(default=None),
+    username: str = Query(...),
+    password: str = Query(...),
+    first_name: Optional[str] = Query(None),
+    last_name: Optional[str] = Query(None),
 ):
     """Регистрация нового пользователя."""
     async with httpx.AsyncClient() as client:
         return await post_request(
             client,
-            '{0}/register'.format(AUTH_SERVICE_URL),
+            f'{AUTH_SERVICE_URL}/register',
             params={
                 'username': username,
                 'password': password,
@@ -77,7 +75,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     async with httpx.AsyncClient() as client:
         return await post_request(
             client,
-            '{0}/login'.format(AUTH_SERVICE_URL),
+            f'{AUTH_SERVICE_URL}/login',
             data=login_data,
             headers=headers,
         )
@@ -85,35 +83,62 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
 
 @app.post('/transactions/')
 async def create_transaction(
-    request: TransactionCreateRequest, token: Optional[str] = None,
+    request: TransactionCreateRequest,
+    token: str = Header(...)
 ):
-    """Создание транзакции."""
     async with httpx.AsyncClient() as client:
-        return await post_request(
-            client,
-            '{0}/transaction/transactions/'.format(TRANSACTION_SERVICE_URL),
-            json={'amount': request.amount, 'type': request.type},
-            params={'token': token},
-        )
+        try:
+            response = await client.post(
+                f"{TRANSACTION_SERVICE_URL}/transaction/transactions/",
+                json={'amount': request.amount, 'type': request.type},
+                headers= {
+                    'token': token,  # Используем 'token' вместо 'Authorization'
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            )
+            response.raise_for_status()  # Поднимает исключение для HTTP ошибок
+            return response.json()  # Возвращаем JSON-ответ от сервиса транзакций
+        except httpx.HTTPStatusError as e:
+            # Обработка HTTP ошибок
+            raise HTTPException(status_code=e.response.status_code, detail=e.response.json())
+        except httpx.RequestError as e:
+            # Обработка ошибок запроса
+            raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post('/transactions/report/')
 async def get_transactions_report(
-    request: DateRangeRequest, token: Optional[str] = None,
+    request: DateRangeRequest,
+    token: str = Header(...),
 ):
     """Получение отчета по транзакциям за указанный временной диапазон."""
+    
+    # Преобразование дат в ISO формат
     start_iso = request.start.isoformat()
     end_iso = request.end.isoformat()
 
+    # Создание клиента HTTPX
     async with httpx.AsyncClient() as client:
-        return await post_request(
-            client,
-            '{0}/transaction/transactions/report/'.format(
-                TRANSACTION_SERVICE_URL,
-            ),
-            json={'start': start_iso, 'end': end_iso},
-            params={'token': token},
-        )
+        try:
+            # Отправка запроса к сервису транзакций
+            response = await client.post(
+                f'{TRANSACTION_SERVICE_URL}/transaction/transactions/report/',
+                json={'start': start_iso, 'end': end_iso},
+                headers={'token': token}
+            )
+            
+            # Проверка успешности запроса
+            response.raise_for_status()  # Поднимает исключение для HTTP ошибок
+            
+            return response.json()  # Возвращаем JSON-ответ от сервиса транзакций
+        except httpx.HTTPStatusError as e:
+            # Обработка HTTP ошибок
+            raise HTTPException(status_code=e.response.status_code, detail=e.response.json())
+        except httpx.RequestError as e:
+            # Обработка ошибок запроса
+            raise HTTPException(status_code=500, detail=str(e))
+
 
 
 async def check_service_health(url: str) -> bool:
@@ -130,8 +155,8 @@ async def check_service_health(url: str) -> bool:
 @app.get('/healthz/ready')
 async def health_check():
     """Проверка состояния всех сервисов."""
-    auth_url = '{0}/healthz/ready'.format(AUTH_SERVICE_URL)
-    trans_url = '{0}/transaction/healthz/ready'.format(TRANSACTION_SERVICE_URL)
+    auth_url = f'{AUTH_SERVICE_URL}/healthz/ready'
+    trans_url = f'{TRANSACTION_SERVICE_URL}/transaction/healthz/ready'
 
     auth_healthy = await check_service_health(auth_url)
     transaction_healthy = await check_service_health(trans_url)
@@ -148,11 +173,12 @@ async def health_check():
 @app.post('/api/verify')
 async def verify_user(token: str = Depends(oauth2_scheme)):
     """Верификация пользователя с проверкой JWT-токена."""
-    headers = {'Authorization': 'Bearer {0}'.format(token)}
+    headers = {'Authorization': f'Bearer {token}'}
     async with httpx.AsyncClient() as client:
         try:
             response = await client.post(
-                '{0}/verify'.format(AUTH_SERVICE_URL), headers=headers,
+                f'{AUTH_SERVICE_URL}/verify',
+                headers=headers,
             )
             response.raise_for_status()
             return response.json()
@@ -161,3 +187,4 @@ async def verify_user(token: str = Depends(oauth2_scheme)):
                 status_code=exc.response.status_code,
                 detail=exc.response.json().get(DETAIL_KEY, 'Ошибка при верификации'),
             )
+    

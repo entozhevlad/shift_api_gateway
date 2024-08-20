@@ -1,6 +1,20 @@
 version: '3.8'
 
 services:
+  db:
+    image: postgres:13
+    environment:
+      POSTGRES_DB: cft
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./initdb.d:/docker-entrypoint-initdb.d
+    networks:
+      - app-network
+
   zookeeper:
     image: confluentinc/cp-zookeeper:latest
     environment:
@@ -8,6 +22,8 @@ services:
       ZOOKEEPER_TICK_TIME: 2000
     ports:
       - "2181:2181"
+    networks:
+      - app-network
 
   kafka:
     image: confluentinc/cp-kafka:latest
@@ -20,6 +36,8 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
     ports:
       - "9092:9092"
+    networks:
+      - app-network
 
   api_gateway:
     build:
@@ -33,6 +51,8 @@ services:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
     ports:
       - "80:80"
+    networks:
+      - app-network
 
   auth_service:
     build:
@@ -40,13 +60,17 @@ services:
       dockerfile: Dockerfile
     depends_on:
       - kafka
+      - db
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - PHOTO_STORAGE_PATH=/app/photos
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/auth_db
     volumes:
       - photos_volume:/app/photos
     ports:
       - "82:82"
+    networks:
+      - app-network
 
   transactions_service:
     build:
@@ -54,10 +78,14 @@ services:
       dockerfile: Dockerfile
     depends_on:
       - kafka
+      - db
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/transactions_db
     ports:
       - "83:83"
+    networks:
+      - app-network
 
   face_verification_service:
     build:
@@ -65,14 +93,25 @@ services:
       dockerfile: Dockerfile
     depends_on:
       - kafka
+      - db
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - PHOTO_STORAGE_PATH=/app/photos
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/face_verification_db
     volumes:
       - photos_volume:/app/photos
     ports:
       - "84:84"
+    networks:
+      - app-network
+
+
 
 volumes:
   photos_volume:
     driver: local
+  postgres_data:
+
+networks:
+  app-network:
+    driver: bridge

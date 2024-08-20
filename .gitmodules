@@ -6,7 +6,7 @@
 [submodule "src/app/external/auth_service"]
     path = src/app/external/auth_service
     url = git@hub.mos.ru:shift-python/y2024/homeworks/vzarubin/sift_auth_service.git
-    branch = week-5-microservices-face
+    branch = week-6-postgres
 
 [submodule "src/app/external/transactions_service"]
     path = src/app/external/transactions_service
