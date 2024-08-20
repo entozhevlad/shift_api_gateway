@@ -1,8 +1,3 @@
-[submodule "src/app/external/api_gateway"]
-    path = src/app/external/api_gateway
-    url = git@hub.mos.ru:your_username/api-gateway.git
-    branch = week-5-microservices-face
-
 [submodule "src/app/external/auth_service"]
     path = src/app/external/auth_service
     url = git@hub.mos.ru:shift-python/y2024/homeworks/vzarubin/sift_auth_service.git
@@ -11,7 +6,7 @@
 [submodule "src/app/external/transactions_service"]
     path = src/app/external/transactions_service
     url = git@hub.mos.ru:shift-python/y2024/homeworks/vzarubin/shift_transaction_service.git
-    branch = week-5-microservices-2
+    branch = week-6-postgres
 
 [submodule "src/app/external/face_verification_service"]
     path = src/app/external/face_verification_service
