@@ -1,0 +1,19 @@
+replicaCount: 2
+
+image:
+  repository: aliquis21/zar-api-gateway-service
+  tag: latest
+
+containerPort: 8080
+
+service:
+  port: 80
+
+configMap:
+  jwtSecretKey: "eyJhbGciOiJIUzI1NiJ9.eyJSb2xlIjoiQWRtaW4iLCJJc3N1ZXIiOiJJc3N1ZXIiLCJVc2VybmFtZSI6IkphdmFJblVzZSIsImV4cCI6MTcyMDA4MTcxNywiaWF0IjoxNzIwMDgxNzE3fQ.pVVn3P7Fzl62b6O-Qge0TpUiA75zu1rNGXpzwykkRHc"
+  kafkaBootstrapServers: "kafka-service:9092"
+
+secret:
+  databaseUrl: cG9zdGdyZXNxbCthc3luY3BnOi8vdXNlcm5hbWU6cGFzc3dvcmRAcG9zdGdyZXNzLXNlcnZpY2U6NTQzMi92emFydWJpbg==
+
+namespace: test

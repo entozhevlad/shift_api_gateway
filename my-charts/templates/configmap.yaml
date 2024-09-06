@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "api-gateway.fullname" . }}-config
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "api-gateway.labels" . | nindent 4 }}
+data:
+  JWT_SECRET_KEY: {{ .Values.configMap.jwtSecretKey }}
+  KAFKA_BOOTSTRAP_SERVERS: {{ .Values.configMap.kafkaBootstrapServers }}

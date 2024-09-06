@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "api-gateway.fullname" . }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "api-gateway.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ include "api-gateway.fullname" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "api-gateway.fullname" . }}
+    spec:
+      containers:
+      - name: {{ include "api-gateway.fullname" . }}
+        image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+        ports:
+        - containerPort: {{ .Values.containerPort }}
+        resources:
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "api-gateway.fullname" . }}-secrets
+              key: DATABASE_URL
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "api-gateway.fullname" . }}-config
+              key: KAFKA_BOOTSTRAP_SERVERS
+        - name: JWT_SECRET_KEY
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "api-gateway.fullname" . }}-config
+              key: JWT_SECRET_KEY
+      imagePullSecrets:
+        - name: regcred
