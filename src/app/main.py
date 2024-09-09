@@ -1,14 +1,18 @@
 from datetime import datetime
 from typing import Optional
-
+import time
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, Header, Query
+from fastapi import Depends, FastAPI, HTTPException, Header, Query,  Request, Response
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 from pydantic import BaseModel, Field
+from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 
 app = FastAPI()
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl='/login')
+
+REQUEST_COUNT = Counter('request_count', 'Total request count', ['endpoint', 'http_status'])
+REQUEST_DURATION = Histogram('request_duration_seconds', 'Duration of requests in seconds', ['endpoint'])
 
 # URLs микросервисов
 AUTH_SERVICE_URL = 'http://auth_service:82'
@@ -30,6 +34,27 @@ class DateRangeRequest(BaseModel):
     """Модель для указания временного диапазона."""
     start: datetime = Field(..., description='Начало временного диапазона')
     end: datetime = Field(..., description='Конец временного диапазона')
+
+@app.middleware("http")
+async def metrics_middleware(request: Request, call_next):
+    """Middleware для сбора метрик Prometheus."""
+    start_time = time.time()
+    response = await call_next(request)
+    request_duration = time.time() - start_time
+
+    # Логирование количества запросов по эндпоинтам и статусам
+    REQUEST_COUNT.labels(endpoint=request.url.path, http_status=response.status_code).inc()
+
+    # Логирование времени выполнения запросов
+    REQUEST_DURATION.labels(endpoint=request.url.path).observe(request_duration)
+
+    return response
+
+# Эндпоинт для получения метрик
+@app.get("/metrics")
+async def get_metrics():
+    """Эндпоинт для получения метрик Prometheus."""
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 async def post_request(client: httpx.AsyncClient, url: str, **kwargs):
@@ -113,7 +138,7 @@ async def get_transactions_report(
     token: str = Header(...),
 ):
     """Получение отчета по транзакциям за указанный временной диапазон."""
-    
+
     # Преобразование дат в ISO формат
     start_iso = request.start.isoformat()
     end_iso = request.end.isoformat()
@@ -127,10 +152,10 @@ async def get_transactions_report(
                 json={'start': start_iso, 'end': end_iso},
                 headers={'token': token}
             )
-            
+
             # Проверка успешности запроса
             response.raise_for_status()  # Поднимает исключение для HTTP ошибок
-            
+
             return response.json()  # Возвращаем JSON-ответ от сервиса транзакций
         except httpx.HTTPStatusError as e:
             # Обработка HTTP ошибок
@@ -187,4 +212,3 @@ async def verify_user(token: str = Depends(oauth2_scheme)):
                 status_code=exc.response.status_code,
                 detail=exc.response.json().get(DETAIL_KEY, 'Ошибка при верификации'),
             )
-    

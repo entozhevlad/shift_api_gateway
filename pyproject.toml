@@ -16,6 +16,7 @@ kafka-python-ng = "^2.2.2"
 sqlalchemy = "^2.0.32"
 alembic = "^1.13.2"
 psycopg2-binary = "^2.9.9"
+prometheus-client = "^0.20.0"
 
 [tool.poetry.group.dev.dependencies]
 wemake-python-styleguide = "^0.19.2"
