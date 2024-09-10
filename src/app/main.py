@@ -6,7 +6,13 @@ from fastapi import Depends, FastAPI, HTTPException, Header, Query,  Request, Re
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 from pydantic import BaseModel, Field
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
-
+from opentelemetry import trace
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.exporter.jaeger.thrift import JaegerExporter
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.instrumentation.requests import RequestsInstrumentor
 app = FastAPI()
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl='/login')
@@ -34,6 +40,39 @@ class DateRangeRequest(BaseModel):
     """Модель для указания временного диапазона."""
     start: datetime = Field(..., description='Начало временного диапазона')
     end: datetime = Field(..., description='Конец временного диапазона')
+
+
+# Настройка ресурса с указанием имени сервиса
+resource = Resource.create(attributes={"service.name": "api_gateway"})
+
+# Инициализация трейсера с ресурсом
+trace_provider = TracerProvider(resource=resource)
+trace.set_tracer_provider(trace_provider)
+
+# Настройка Jaeger Exporter
+jaeger_exporter = JaegerExporter(
+    agent_host_name='jaeger',  # Jaeger host из docker-compose
+    agent_port=6831,           # порт Jaeger для UDP
+)
+
+# Создание процессора для отправки трейсингов в Jaeger
+span_processor = BatchSpanProcessor(jaeger_exporter)
+trace_provider.add_span_processor(span_processor)
+
+# Инструментирование FastAPI
+FastAPIInstrumentor.instrument_app(app)
+
+# Инструментирование HTTP-клиентов (например, requests)
+RequestsInstrumentor().instrument()
+
+# Завершение работы (shutdown) при завершении приложения
+@app.on_event("shutdown")
+def shutdown_tracer():
+    try:
+        trace.get_tracer_provider().shutdown()
+    except Exception as e:
+        print(f"Ошибка завершения трейсера: {e}")
+
 
 @app.middleware("http")
 async def metrics_middleware(request: Request, call_next):
