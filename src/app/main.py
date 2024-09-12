@@ -13,6 +13,9 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.jaeger.thrift import JaegerExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
+from redis import Redis
+import json
+
 app = FastAPI()
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl='/login')
@@ -89,6 +92,9 @@ async def metrics_middleware(request: Request, call_next):
 
     return response
 
+def get_redis() -> Redis:
+    return Redis(host='redis', port=6379, db=0, decode_responses=True)
+
 # Эндпоинт для получения метрик
 @app.get("/metrics")
 async def get_metrics():
@@ -148,26 +154,36 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
 @app.post('/transactions/')
 async def create_transaction(
     request: TransactionCreateRequest,
-    token: str = Header(...)
+    token: str = Header(...),
+    redis_client: Redis = Depends(get_redis),  # Добавляем Redis в зависимости
 ):
+    cache_key = f"transaction:{token}:{request.amount}:{request.type}"
+    cached_response = redis_client.get(cache_key)
+
+    if cached_response:
+        # Возвращаем кэшированные данные, если они существуют
+        return json.loads(cached_response)
+
     async with httpx.AsyncClient() as client:
         try:
             response = await client.post(
                 f"{TRANSACTION_SERVICE_URL}/transaction/transactions/",
                 json={'amount': request.amount, 'type': request.type},
-                headers= {
-                    'token': token,  # Используем 'token' вместо 'Authorization'
+                headers={
+                    'token': token,
                     'Content-Type': 'application/json',
                     'Accept': 'application/json'
                 }
             )
-            response.raise_for_status()  # Поднимает исключение для HTTP ошибок
-            return response.json()  # Возвращаем JSON-ответ от сервиса транзакций
+            response.raise_for_status()
+
+            # Кэшируем результат на 60 секунд
+            redis_client.setex(cache_key, 60, response.text)
+
+            return response.json()
         except httpx.HTTPStatusError as e:
-            # Обработка HTTP ошибок
             raise HTTPException(status_code=e.response.status_code, detail=e.response.json())
         except httpx.RequestError as e:
-            # Обработка ошибок запроса
             raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -175,32 +191,34 @@ async def create_transaction(
 async def get_transactions_report(
     request: DateRangeRequest,
     token: str = Header(...),
+    redis_client: Redis = Depends(get_redis),  # Добавляем Redis в зависимости
 ):
-    """Получение отчета по транзакциям за указанный временной диапазон."""
+    cache_key = f"transactions_report:{token}:{request.start}:{request.end}"
+    cached_report = redis_client.get(cache_key)
 
-    # Преобразование дат в ISO формат
+    if cached_report:
+        # Возвращаем кэшированный отчет, если он есть
+        return json.loads(cached_report)
+
     start_iso = request.start.isoformat()
     end_iso = request.end.isoformat()
 
-    # Создание клиента HTTPX
     async with httpx.AsyncClient() as client:
         try:
-            # Отправка запроса к сервису транзакций
             response = await client.post(
                 f'{TRANSACTION_SERVICE_URL}/transaction/transactions/report/',
                 json={'start': start_iso, 'end': end_iso},
                 headers={'token': token}
             )
+            response.raise_for_status()
 
-            # Проверка успешности запроса
-            response.raise_for_status()  # Поднимает исключение для HTTP ошибок
+            # Кэшируем результат на 60 секунд
+            redis_client.setex(cache_key, 60, response.text)
 
-            return response.json()  # Возвращаем JSON-ответ от сервиса транзакций
+            return response.json()
         except httpx.HTTPStatusError as e:
-            # Обработка HTTP ошибок
             raise HTTPException(status_code=e.response.status_code, detail=e.response.json())
         except httpx.RequestError as e:
-            # Обработка ошибок запроса
             raise HTTPException(status_code=500, detail=str(e))
 
 
