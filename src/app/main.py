@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional
 import time
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, Header, Query,  Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Header, Query, Request, Response
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 from pydantic import BaseModel, Field
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
@@ -13,7 +13,7 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.jaeger.thrift import JaegerExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
-from redis import Redis
+from redis.asyncio import Redis  # Импорт асинхронного клиента Redis
 import json
 
 app = FastAPI()
@@ -70,9 +70,9 @@ RequestsInstrumentor().instrument()
 
 # Завершение работы (shutdown) при завершении приложения
 @app.on_event("shutdown")
-def shutdown_tracer():
+async def shutdown_tracer():
     try:
-        trace.get_tracer_provider().shutdown()
+        await trace.get_tracer_provider().shutdown()
     except Exception as e:
         print(f"Ошибка завершения трейсера: {e}")
 
@@ -92,8 +92,9 @@ async def metrics_middleware(request: Request, call_next):
 
     return response
 
-def get_redis() -> Redis:
+async def get_redis() -> Redis:
     return Redis(host='redis', port=6379, db=0, decode_responses=True)
+
 
 # Эндпоинт для получения метрик
 @app.get("/metrics")
@@ -158,7 +159,7 @@ async def create_transaction(
     redis_client: Redis = Depends(get_redis),  # Добавляем Redis в зависимости
 ):
     cache_key = f"transaction:{token}:{request.amount}:{request.type}"
-    cached_response = redis_client.get(cache_key)
+    cached_response = await redis_client.get(cache_key)  # Асинхронный метод
 
     if cached_response:
         # Возвращаем кэшированные данные, если они существуют
@@ -167,10 +168,10 @@ async def create_transaction(
     async with httpx.AsyncClient() as client:
         try:
             response = await client.post(
-                f"{TRANSACTION_SERVICE_URL}/transaction/transactions/",
+                f"{TRANSACTION_SERVICE_URL}/transactions/",
                 json={'amount': request.amount, 'type': request.type},
                 headers={
-                    'token': token,
+                    'Authorization': f'Bearer {token}',
                     'Content-Type': 'application/json',
                     'Accept': 'application/json'
                 }
@@ -178,7 +179,7 @@ async def create_transaction(
             response.raise_for_status()
 
             # Кэшируем результат на 60 секунд
-            redis_client.setex(cache_key, 60, response.text)
+            await redis_client.setex(cache_key, 60, response.text)  # Асинхронный метод
 
             return response.json()
         except httpx.HTTPStatusError as e:
@@ -194,7 +195,7 @@ async def get_transactions_report(
     redis_client: Redis = Depends(get_redis),  # Добавляем Redis в зависимости
 ):
     cache_key = f"transactions_report:{token}:{request.start}:{request.end}"
-    cached_report = redis_client.get(cache_key)
+    cached_report = await redis_client.get(cache_key)  # Асинхронный метод
 
     if cached_report:
         # Возвращаем кэшированный отчет, если он есть
@@ -206,21 +207,20 @@ async def get_transactions_report(
     async with httpx.AsyncClient() as client:
         try:
             response = await client.post(
-                f'{TRANSACTION_SERVICE_URL}/transaction/transactions/report/',
+                f'{TRANSACTION_SERVICE_URL}/transactions/report/',
                 json={'start': start_iso, 'end': end_iso},
-                headers={'token': token}
+                headers={'Authorization': f'Bearer {token}'}
             )
             response.raise_for_status()
 
             # Кэшируем результат на 60 секунд
-            redis_client.setex(cache_key, 60, response.text)
+            await redis_client.setex(cache_key, 60, response.text)  # Асинхронный метод
 
             return response.json()
         except httpx.HTTPStatusError as e:
             raise HTTPException(status_code=e.response.status_code, detail=e.response.json())
         except httpx.RequestError as e:
             raise HTTPException(status_code=500, detail=str(e))
-
 
 
 async def check_service_health(url: str) -> bool:
@@ -238,7 +238,7 @@ async def check_service_health(url: str) -> bool:
 async def health_check():
     """Проверка состояния всех сервисов."""
     auth_url = f'{AUTH_SERVICE_URL}/healthz/ready'
-    trans_url = f'{TRANSACTION_SERVICE_URL}/transaction/healthz/ready'
+    trans_url = f'{TRANSACTION_SERVICE_URL}/healthz/ready'
 
     auth_healthy = await check_service_health(auth_url)
     transaction_healthy = await check_service_health(trans_url)
