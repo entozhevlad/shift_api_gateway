@@ -28,6 +28,8 @@ opentelemetry-instrumentation-requests = "^0.48b0"
 requests = "^2.32.3"
 redis = "^5.0.8"
 aioredis = "^2.0.1"
+aioresponses = "^0.7.6"
+respx = "^0.21.1"
 
 
 [tool.poetry.group.dev.dependencies]

@@ -1,14 +1,14 @@
 [submodule "src/app/external/auth_service"]
     path = src/app/external/auth_service
     url = git@hub.mos.ru:shift-python/y2024/homeworks/vzarubin/sift_auth_service.git
-    branch = redis
+    branch = refactoring
 
 [submodule "src/app/external/transactions_service"]
     path = src/app/external/transactions_service
     url = git@hub.mos.ru:shift-python/y2024/homeworks/vzarubin/shift_transaction_service.git
-    branch = redis
+    branch = refactoring
 
 [submodule "src/app/external/face_verification_service"]
     path = src/app/external/face_verification_service
     url = git@hub.mos.ru:shift-python/y2024/homeworks/vzarubin/shift_faceverificationservice.git
-    branch = redis
+    branch = refactoring

@@ -1,27 +1,32 @@
+import json
+import time
 from datetime import datetime
 from typing import Optional
-import time
+
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, Header, Query, Request, Response
-from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
-from pydantic import BaseModel, Field
-from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from opentelemetry import trace
-from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.jaeger.thrift import JaegerExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
-from redis.asyncio import Redis  # Импорт асинхронного клиента Redis
-import json
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
+from pydantic import BaseModel, Field
+from redis.asyncio import Redis
 
 app = FastAPI()
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl='/login')
 
-REQUEST_COUNT = Counter('request_count', 'Total request count', ['endpoint', 'http_status'])
-REQUEST_DURATION = Histogram('request_duration_seconds', 'Duration of requests in seconds', ['endpoint'])
+REQUEST_COUNT = Counter('request_count', 'Total request count',
+                        ['endpoint', 'http_status'],
+                        )
+REQUEST_DURATION = Histogram('request_duration_seconds',
+                             'Duration of requests in seconds', ['endpoint'],
+                             )
 
 # URLs микросервисов
 AUTH_SERVICE_URL = 'http://auth_service:82'
@@ -35,18 +40,20 @@ DETAIL_KEY = 'detail'
 
 class TransactionCreateRequest(BaseModel):
     """Модель для создания транзакции."""
+
     amount: float
     type: str = Field(..., pattern='(debit|credit)')
 
 
 class DateRangeRequest(BaseModel):
     """Модель для указания временного диапазона."""
+
     start: datetime = Field(..., description='Начало временного диапазона')
     end: datetime = Field(..., description='Конец временного диапазона')
 
 
 # Настройка ресурса с указанием имени сервиса
-resource = Resource.create(attributes={"service.name": "api_gateway"})
+resource = Resource.create(attributes={'service.name': 'api_gateway'})
 
 # Инициализация трейсера с ресурсом
 trace_provider = TracerProvider(resource=resource)
@@ -68,16 +75,17 @@ FastAPIInstrumentor.instrument_app(app)
 # Инструментирование HTTP-клиентов (например, requests)
 RequestsInstrumentor().instrument()
 
-# Завершение работы (shutdown) при завершении приложения
-@app.on_event("shutdown")
+
+@app.on_event('shutdown')
 async def shutdown_tracer():
+    """Завершение работы."""
     try:
         await trace.get_tracer_provider().shutdown()
-    except Exception as e:
-        print(f"Ошибка завершения трейсера: {e}")
+    except Exception as exc:
+        return f'Ошибка завершения трейсера: {exc}'
 
 
-@app.middleware("http")
+@app.middleware('http')
 async def metrics_middleware(request: Request, call_next):
     """Middleware для сбора метрик Prometheus."""
     start_time = time.time()
@@ -85,19 +93,23 @@ async def metrics_middleware(request: Request, call_next):
     request_duration = time.time() - start_time
 
     # Логирование количества запросов по эндпоинтам и статусам
-    REQUEST_COUNT.labels(endpoint=request.url.path, http_status=response.status_code).inc()
+    REQUEST_COUNT.labels(endpoint=request.url.path,
+                         http_status=response.status_code,
+                         ).inc()
 
     # Логирование времени выполнения запросов
     REQUEST_DURATION.labels(endpoint=request.url.path).observe(request_duration)
 
     return response
 
+
 async def get_redis() -> Redis:
+    """Инциализация Redis."""
     return Redis(host='redis', port=6379, db=0, decode_responses=True)
 
 
 # Эндпоинт для получения метрик
-@app.get("/metrics")
+@app.get('/metrics')
 async def get_metrics():
     """Эндпоинт для получения метрик Prometheus."""
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
@@ -156,11 +168,11 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
 async def create_transaction(
     request: TransactionCreateRequest,
     token: str = Header(...),
-    redis_client: Redis = Depends(get_redis),  # Добавляем Redis в зависимости
+    redis_client: Redis = Depends(get_redis),
 ):
-    cache_key = f"transaction:{token}:{request.amount}:{request.type}"
-    cached_response = await redis_client.get(cache_key)  # Асинхронный метод
-
+    """Создание транзакции."""
+    cache_key = f'transaction:{token}:{request.amount}:{request.type}'
+    cached_response = await redis_client.get(cache_key)
     if cached_response:
         # Возвращаем кэшированные данные, если они существуют
         return json.loads(cached_response)
@@ -168,13 +180,13 @@ async def create_transaction(
     async with httpx.AsyncClient() as client:
         try:
             response = await client.post(
-                f"{TRANSACTION_SERVICE_URL}/transactions/",
+                f'{TRANSACTION_SERVICE_URL}/transactions/',
                 json={'amount': request.amount, 'type': request.type},
                 headers={
                     'Authorization': f'Bearer {token}',
                     'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                }
+                    'Accept': 'application/json',
+                },
             )
             response.raise_for_status()
 
@@ -182,23 +194,25 @@ async def create_transaction(
             await redis_client.setex(cache_key, 60, response.text)  # Асинхронный метод
 
             return response.json()
-        except httpx.HTTPStatusError as e:
-            raise HTTPException(status_code=e.response.status_code, detail=e.response.json())
-        except httpx.RequestError as e:
-            raise HTTPException(status_code=500, detail=str(e))
+        except httpx.HTTPStatusError as exc:
+            raise HTTPException(status_code=exc.response.status_code,
+                                detail=exc.response.json(),
+                                )
+        except httpx.RequestError as exc:
+            raise HTTPException(status_code=500, detail=str(exc))
 
 
 @app.post('/transactions/report/')
 async def get_transactions_report(
     request: DateRangeRequest,
     token: str = Header(...),
-    redis_client: Redis = Depends(get_redis),  # Добавляем Redis в зависимости
+    redis_client: Redis = Depends(get_redis),
 ):
-    cache_key = f"transactions_report:{token}:{request.start}:{request.end}"
-    cached_report = await redis_client.get(cache_key)  # Асинхронный метод
+    """Получение отчёта о пользователе."""
+    cache_key = f'transactions_report:{token}:{request.start}:{request.end}'
+    cached_report = await redis_client.get(cache_key)
 
     if cached_report:
-        # Возвращаем кэшированный отчет, если он есть
         return json.loads(cached_report)
 
     start_iso = request.start.isoformat()
@@ -209,7 +223,7 @@ async def get_transactions_report(
             response = await client.post(
                 f'{TRANSACTION_SERVICE_URL}/transactions/report/',
                 json={'start': start_iso, 'end': end_iso},
-                headers={'Authorization': f'Bearer {token}'}
+                headers={'Authorization': f'Bearer {token}'},
             )
             response.raise_for_status()
 
@@ -217,10 +231,12 @@ async def get_transactions_report(
             await redis_client.setex(cache_key, 60, response.text)  # Асинхронный метод
 
             return response.json()
-        except httpx.HTTPStatusError as e:
-            raise HTTPException(status_code=e.response.status_code, detail=e.response.json())
-        except httpx.RequestError as e:
-            raise HTTPException(status_code=500, detail=str(e))
+        except httpx.HTTPStatusError as exc:
+            raise HTTPException(status_code=exc.response.status_code,
+                                detail=exc.response.json(),
+                                )
+        except httpx.RequestError as exc:
+            raise HTTPException(status_code=500, detail=str(exc))
 
 
 async def check_service_health(url: str) -> bool:

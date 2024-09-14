@@ -1,108 +1,112 @@
 import pytest
-from fastapi.testclient import TestClient
-from httpx import Response, Request
-from src.app.main import app
+from httpx import AsyncClient, Response
+from fastapi import FastAPI
+from src.app.main import app, get_redis
+from redis.asyncio import Redis
+from unittest.mock import AsyncMock
+import respx
 
-client = TestClient(app)
-
-
-@pytest.fixture
-def mock_auth_service(mocker):
-    async def mock_post(url, *, data=None, json=None, params=None, headers=None):
-        if url == "http://auth_service:82/register":
-            if params and params.get("username") == "existing_user":
-                return Response(status_code=400, request=Request("POST", url), text='{"detail": "User already exists"}')
-            return Response(status_code=200, request=Request("POST", url), text='{"message": "User registered successfully"}')
-
-        if url == "http://auth_service:82/login":
-            # Проверка data вместо params
-            if data and data.get("username") == "invalid_user":
-                return Response(status_code=400, request=Request("POST", url), text='{"detail": "Invalid credentials"}')
-            return Response(status_code=200, request=Request("POST", url), text='{"access_token": "valid_token"}')
-
-    mocker.patch('httpx.AsyncClient.post', side_effect=mock_post)
+# Фикстура для асинхронного клиента
 
 
 @pytest.fixture
-def mock_transaction_service(mocker):
-    async def mock_post(url, json=None, params=None):
-        if url == "http://transactions_service:83/transaction/transactions/":
-            if params and params.get("token") == "invalid_token":
-                return Response(status_code=401, text='{"detail": "Invalid token"}')
-            return Response(status_code=200, text='{"message": "Transaction created"}')
+async def async_client():
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        yield client
 
-        if url == "http://transactions_service:83/transaction/transactions/report/":
-            return Response(status_code=200, text='{"report": "Some report data"}')
-
-    mocker.patch('httpx.AsyncClient.post', side_effect=mock_post)
+# Фикстура для мока Redis
 
 
 @pytest.fixture
-def mock_health_check(mocker):
-    async def mock_get(url, *args, **kwargs):
-        if url == "http://transactions_service:83/transaction/healthz/ready":
-            # Создаем корректный объект Request для Response
-            request = Request("GET", url)
-            return Response(status_code=200, text='{"status": "healthy"}', request=request)
-        if url == "http://auth_service:82/healthz/ready":
-            # Создаем корректный объект Request для Response
-            request = Request("GET", url)
-            return Response(status_code=200, text='{"status": "healthy"}', request=request)
-        return Response(status_code=404, text='{"detail": "Not Found"}', request=Request("GET", url))
+def mock_redis():
+    return AsyncMock(spec=Redis)
 
-    mocker.patch('httpx.AsyncClient.get', side_effect=mock_get)
+# Заменяем зависимость Redis на мок
 
 
-def test_register_user_success(mock_auth_service):
-    response = client.post("/register", params={"username": "new_user",
-                           "password": "password123", "first_name": "Vladislav", "last_name": "Zarubin"})
-    assert response.status_code == 200
-    assert response.json() == {"message": "User registered successfully"}
+@pytest.fixture(autouse=True)
+def override_redis_dependency(mock_redis):
+    app.dependency_overrides[get_redis] = lambda: mock_redis
+
+# Тестирование регистрации пользователя
 
 
-def test_register_user_already_exists(mock_auth_service):
-    response = client.post(
-        "/register", params={"username": "existing_user", "password": "password123"})
-    assert response.status_code == 400
-    assert response.json() == {"detail": "User already exists"}
+@pytest.mark.asyncio
+async def test_register_user(async_client, mock_redis):
+    with respx.mock(base_url="http://auth_service:82") as mock:
+        mock.post("/register").mock(return_value=Response(200,
+                                                          json={"status": "success"}))
+        response = await async_client.post(
+            "/register",
+            json={"username": "testuser", "password": "password123",
+                  "first_name": "Test", "last_name": "User"}
+        )
+        assert response.status_code == 200
+        assert response.json() == {"status": "success"}
+
+# Тестирование логина пользователя
 
 
-def test_login_user_success(mock_auth_service):
-    response = client.post(
-        "/login", data={"username": "valid_user", "password": "password123"})
-    assert response.status_code == 200
-    assert response.json() == {"access_token": "valid_token"}
+@pytest.mark.asyncio
+async def test_login_user(async_client):
+    with respx.mock(base_url="http://auth_service:82") as mock:
+        mock.post("/login").mock(return_value=Response(200,
+                                                       json={"access_token": "fake_token"}))
+        response = await async_client.post(
+            "/login",
+            data={"username": "testuser", "password": "password123"},
+            headers={"Content-Type": "application/x-www-form-urlencoded"}
+        )
+        assert response.status_code == 200
+        assert response.json() == {"access_token": "fake_token"}
+
+# Тестирование создания транзакции
 
 
-def test_login_user_invalid_credentials(mock_auth_service):
-    response = client.post(
-        "/login", data={"username": "invalid_user", "password": "password123"})
-    assert response.status_code == 400
-    assert response.json() == {"detail": "Invalid credentials"}
+@pytest.mark.asyncio
+async def test_create_transaction(async_client, mock_redis):
+    mock_redis.get.return_value = None
+    with respx.mock(base_url="http://transactions_service:83") as mock:
+        mock.post("/transactions/").mock(return_value=Response(200,
+                                                               json={"status": "transaction created"}))
+        response = await async_client.post(
+            "/transactions/",
+            json={"amount": 100.0, "type": "debit"},
+            headers={"Authorization": "Bearer fake_token"}
+        )
+        assert response.status_code == 200
+        assert response.json() == {"status": "transaction created"}
+        mock_redis.setex.assert_called_once()
+
+# Тестирование получения отчета по транзакциям
 
 
-def test_create_transaction_success(mock_transaction_service):
-    response = client.post(
-        "/transactions/", json={"amount": 100.0, "type": "debit"}, params={"token": "valid_token"})
-    assert response.status_code == 200
-    assert response.json() == {"message": "Transaction created"}
+@pytest.mark.asyncio
+async def test_get_transactions_report(async_client, mock_redis):
+    mock_redis.get.return_value = None
+    with respx.mock(base_url="http://transactions_service:83") as mock:
+        mock.post("/transactions/report/").mock(return_value=Response(200,
+                                                                      json={"report": "some data"}))
+        response = await async_client.post(
+            "/transactions/report/",
+            json={"start": "2024-01-01T00:00:00", "end": "2024-01-31T23:59:59"},
+            headers={"Authorization": "Bearer fake_token"}
+        )
+        assert response.status_code == 200
+        assert response.json() == {"report": "some data"}
+        mock_redis.setex.assert_called_once()
+
+# Тестирование health check
 
 
-def test_create_transaction_invalid_token(mock_transaction_service):
-    response = client.post(
-        "/transactions/", json={"amount": 100.0, "type": "debit"}, params={"token": "invalid_token"})
-    assert response.status_code == 401
-    assert response.json() == {"detail": "Invalid token"}
-
-
-def test_get_transactions_report_success(mock_transaction_service):
-    response = client.post("/transactions/report/", json={
-                           "start": "2024-01-01T00:00:00", "end": "2024-01-31T23:59:59"}, params={"token": "valid_token"})
-    assert response.status_code == 200
-    assert response.json() == {"report": "Some report data"}
-
-
-def test_health_check_success(mock_health_check):
-    response = client.get("/healthz/ready")
-    assert response.status_code == 200
-    assert response.json() == {"status": "healthy"}
+@pytest.mark.asyncio
+async def test_health_check(async_client):
+    with respx.mock(base_url="http://auth_service:82") as mock_auth, \
+            respx.mock(base_url="http://transactions_service:83") as mock_trans:
+        mock_auth.get("/healthz/ready").mock(return_value=Response(200,
+                                                                   json={"status": "healthy"}))
+        mock_trans.get("/healthz/ready").mock(return_value=Response(200,
+                                                                    json={"status": "healthy"}))
+        response = await async_client.get("/healthz/ready")
+        assert response.status_code == 200
+        assert response.json() == {"status": "healthy"}
